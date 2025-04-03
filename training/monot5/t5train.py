@@ -2,11 +2,10 @@ import json
 import ir_datasets
 import pandas as pd
 import pyterrier as pt
-pt.init()
+pt.java.init()
 from pyterrier.measures import *
 from pyterrier_t5 import MonoT5ReRanker
-from transformers import T5ForConditionalGeneration, T5Tokenizer
-from transformers import AdamW
+from transformers import T5ForConditionalGeneration, T5Tokenizer, Adafactor
 from random import Random
 import itertools
 
@@ -16,11 +15,11 @@ import torch
 torch.manual_seed(0)
 
 _logger = ir_datasets.log.easy()
-
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 OUTPUTS = ['true', 'false']
 
 def iter_train_samples():
-  dataset = ir_datasets.load('msmarco-passage/train')
+  dataset = ir_datasets.load('msmarco-passage/train/triples-small')
   docs = dataset.docs_store()
   queries = {q.query_id: q.text for q in dataset.queries_iter()}
   while True:
@@ -30,9 +29,9 @@ def iter_train_samples():
 
 train_iter = _logger.pbar(iter_train_samples(), desc='total train samples')
 
-model = T5ForConditionalGeneration.from_pretrained("t5-base").cuda()
+model = T5ForConditionalGeneration.from_pretrained("t5-base").to(DEVICE)
 tokenizer = T5Tokenizer.from_pretrained("t5-base")
-optimizer = AdamW(model.parameters(), lr=5e-5)
+optimizer = Adafactor(model.parameters(), lr=5e-5, relative_step=False)
 
 
 reranker = MonoT5ReRanker(verbose=False, batch_size=BATCH_SIZE)
@@ -44,7 +43,7 @@ def build_validation_data():
   dataset = ir_datasets.load('msmarco-passage/trec-dl-2019/judged')
   docs = dataset.docs_store()
   queries = {q.query_id: q.text for q in dataset.queries_iter()}
-  for qrel in _logger.pbar(ir_datasets.load('msmarco-passage/dev').scoreddocs, desc='dev data'):
+  for qrel in _logger.pbar(ir_datasets.load('msmarco-passage/dev').qrels_iter(), desc='dev data'):
     if qrel.query_id in queries:
       result.append([qrel.query_id, queries[qrel.query_id], qrel.doc_id, docs.get(qrel.doc_id).text])
   return pd.DataFrame(result, columns=['qid', 'query', 'docno', 'text'])
@@ -67,8 +66,8 @@ while True:
         i, o = next(train_iter)
         inp.append(i)
         out.append(o)
-      inp_ids = tokenizer(inp, return_tensors='pt', padding=True).input_ids.cuda()
-      out_ids = tokenizer(out, return_tensors='pt', padding=True).input_ids.cuda()
+      inp_ids = tokenizer(inp, return_tensors='pt', padding=True).input_ids.to(DEVICE)
+      out_ids = tokenizer(out, return_tensors='pt', padding=True).input_ids.to(DEVICE)
       loss = model(input_ids=inp_ids, labels=out_ids).loss
       loss.backward()
       optimizer.step()
