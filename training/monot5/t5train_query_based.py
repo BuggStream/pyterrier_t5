@@ -81,11 +81,4 @@ with _logger.duration(f'valid {epoch}'):
   reranker.verbose = True
   res = reranker(valid_data)
   reranker.verbose = False
-  metrics = {'epoch': epoch, 'loss': total_loss / count}
-  metrics.update(pt.Utils.evaluate(res, valid_qrels, [nDCG, RR(rel=2)]))
-  _logger.info(metrics)
-  with open('log.jsonl', 'at') as f:
-    f.write(json.dumps(metrics) + '\n')
-  _logger.info('new best nDCG')
   model.save_pretrained(f'./mymodel-best-{epoch}')
-  max_ndcg = metrics['nDCG']
