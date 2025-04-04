@@ -55,39 +55,29 @@ epoch = 0
 
 max_ndcg = 0.
 
-while True:
-  with _logger.pbar_raw(desc=f'train {epoch}', total=16384 // BATCH_SIZE) as pbar:
-    model.train()
-    total_loss = 0
-    count = 0
-    for _ in range(16384 // BATCH_SIZE):
-      inp, out = [], []
-      for i in range(BATCH_SIZE):
-        i, o = next(train_iter)
-        inp.append(i)
-        out.append(o)
-      inp_ids = tokenizer(inp, return_tensors='pt', padding=True).input_ids.to(DEVICE)
-      out_ids = tokenizer(out, return_tensors='pt', padding=True).input_ids.to(DEVICE)
-      loss = model(input_ids=inp_ids, labels=out_ids).loss
-      loss.backward()
-      optimizer.step()
-      optimizer.zero_grad()
-      total_loss = loss.item()
-      count += 1
-      pbar.update(1)
-      pbar.set_postfix({'loss': total_loss/count})
-  with _logger.duration(f'valid {epoch}'):
-    reranker.model = model
-    reranker.verbose = True
-    res = reranker(valid_data)
-    reranker.verbose = False
-    metrics = {'epoch': epoch, 'loss': total_loss / count}
-    metrics.update(pt.Utils.evaluate(res, valid_qrels, [nDCG, RR(rel=2)]))
-    _logger.info(metrics)
-    with open('log.jsonl', 'at') as f:
-      f.write(json.dumps(metrics) + '\n')
-    if metrics['nDCG'] > max_ndcg:
-      _logger.info('new best nDCG')
-      model.save_pretrained(f'./mymodel-best-{epoch}')
-      max_ndcg = metrics['nDCG']
-  epoch += 1
+with _logger.pbar_raw(desc=f'train {epoch}', total=16384 // BATCH_SIZE) as pbar:
+  model.train()
+  total_loss = 0
+  count = 0
+  for _ in range(16384 // BATCH_SIZE):
+    inp, out = [], []
+    for i in range(BATCH_SIZE):
+      i, o = next(train_iter)
+      inp.append(i)
+      out.append(o)
+    inp_ids = tokenizer(inp, return_tensors='pt', padding=True).input_ids.to(DEVICE)
+    out_ids = tokenizer(out, return_tensors='pt', padding=True).input_ids.to(DEVICE)
+    loss = model(input_ids=inp_ids, labels=out_ids).loss
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+    total_loss = loss.item()
+    count += 1
+    pbar.update(1)
+    pbar.set_postfix({'loss': total_loss/count})
+with _logger.duration(f'valid {epoch}'):
+  reranker.model = model
+  reranker.verbose = True
+  res = reranker(valid_data)
+  reranker.verbose = False
+  model.save_pretrained(f'./mymodel-best-{epoch}')
